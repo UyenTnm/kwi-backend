@@ -8,6 +8,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   BeforeInsert,
+  Index,
 } from 'typeorm';
 import { Category } from '../categories/category.entity';
 import { ProductImage } from './product-image.entity';
@@ -15,6 +16,7 @@ import { ProductVariant } from './product-variant.entity';
 import { CartItem } from 'src/cart/cart-item.entity';
 
 @Entity('products')
+@Index('uq_products_slug', ['slug'], { unique: true })
 export class Product {
   @PrimaryGeneratedColumn()
   id: number;
@@ -22,7 +24,6 @@ export class Product {
   @Column({ nullable: false })
   name: string;
 
-  // Slug duy nhất, dùng cho URL
   @Column({ unique: true })
   slug: string;
 
@@ -33,17 +34,28 @@ export class Product {
   layout: string;
 
   @Column({ type: 'text', nullable: true })
-  description: string;
+  description: string | null;
 
   @Column({ type: 'int', default: 0 })
   stock: number;
 
+  @Column({ default: 'USD' })
+  currency: string;
+
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   price: number;
 
-  // Thumbnail chính
-  @Column({ nullable: true })
-  image: string;
+  // Thumbnail chính (nullable)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  image: string | null;
+
+  // Video demo (nullable)
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  video: string | null;
+
+  // Trạng thái hiển thị bán
+  @Column({ type: 'boolean', default: true })
+  isActive: boolean;
 
   @BeforeInsert()
   generateSlug() {
@@ -52,14 +64,12 @@ export class Product {
     }
   }
 
-  // Quan hệ tới Category
   @ManyToOne(() => Category, (category) => category.products, {
     onDelete: 'SET NULL',
     nullable: true,
   })
   category: Category | null;
 
-  // Quan hệ ngược cho ảnh & biến thể
   @OneToMany(() => ProductImage, (img) => img.product, { cascade: true })
   images: ProductImage[];
 

@@ -1,59 +1,128 @@
 import {
+  Body,
   Controller,
-  Get,
   Post,
-  Patch,
+  Get,
+  Put,
   Delete,
   Param,
-  Body,
-  Query,
   UseInterceptors,
-  UploadedFile,
-  ParseIntPipe,
+  UploadedFiles,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
-import { Product } from './product.entity';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
+import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 
+@ApiTags('Products')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  // ✅ Create product (admin)
+  // CREATE
   @Post()
-  @UseInterceptors(FileInterceptor('file'))
-  async create(@Body() body: any, @UploadedFile() file?: Express.Multer.File) {
-    return await this.productsService.create(body, file);
-  }
-
-  // ✅ Get all products (user + admin)
-  @Get()
-  async findAll(@Query('categoryId') categoryId?: number): Promise<Product[]> {
-    return await this.productsService.findAll(
-      categoryId ? +categoryId : undefined,
-    );
-  }
-
-  // ✅ Get one product
-  @Get(':id')
-  async findOne(@Param('id', ParseIntPipe) id: number): Promise<Product> {
-    return await this.productsService.findOne(id);
-  }
-
-  // ✅ Update product (admin)
-  @Patch(':id')
-  @UseInterceptors(FileInterceptor('file'))
-  async update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() body: any,
-    @UploadedFile() file?: Express.Multer.File,
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'video', maxCount: 1 },
+    ]),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        description: { type: 'string' },
+        slug: { type: 'string' },
+        price: { type: 'number' },
+        stock: { type: 'number' },
+        currency: { type: 'string', enum: ['USD', 'VND', 'EUR'] },
+        categoryId: { type: 'number' },
+        isActive: { type: 'boolean' },
+        // 2 lựa chọn: upload file hoặc gửi URL dưới key cùng tên
+        image: {
+          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+        },
+        video: {
+          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+        },
+      },
+    },
+  })
+  async create(
+    @Body() dto: CreateProductDto,
+    @UploadedFiles()
+    files?: {
+      image?: Express.Multer.File[];
+      video?: Express.Multer.File[];
+    },
   ) {
-    return await this.productsService.update(id, body, file);
+    const imageFile = files?.image?.[0];
+    const videoFile = files?.video?.[0];
+    return this.productsService.create(dto, imageFile, videoFile);
   }
 
-  // ✅ Delete product (admin)
+  // READ ALL
+  @Get()
+  async findAll() {
+    return this.productsService.findAll();
+  }
+
+  // READ ONE
+  @Get(':id')
+  async findOne(@Param('id') id: number) {
+    return this.productsService.findOne(+id);
+  }
+
+  // UPDATE
+  @Put(':id')
+  @UseInterceptors(
+    FileFieldsInterceptor([
+      { name: 'image', maxCount: 1 },
+      { name: 'video', maxCount: 1 },
+    ]),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        description: { type: 'string' },
+        slug: { type: 'string' },
+        price: { type: 'number' },
+        stock: { type: 'number' },
+        currency: { type: 'string', enum: ['USD', 'VND', 'EUR'] },
+        categoryId: { type: 'number' },
+        isActive: { type: 'boolean' },
+        image: {
+          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+        },
+        video: {
+          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+        },
+      },
+    },
+  })
+  async update(
+    @Param('id') id: number,
+    @Body() dto: UpdateProductDto,
+    @UploadedFiles()
+    files?: {
+      image?: Express.Multer.File[];
+      video?: Express.Multer.File[];
+    },
+  ) {
+    const imageFile = files?.image?.[0];
+    const videoFile = files?.video?.[0];
+    return this.productsService.update(+id, dto, imageFile, videoFile);
+  }
+
+  // DELETE
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number) {
-    return await this.productsService.remove(id);
+  async remove(@Param('id') id: number) {
+    return this.productsService.remove(+id);
   }
 }

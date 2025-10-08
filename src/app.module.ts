@@ -11,6 +11,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { ConfigModule } from '@nestjs/config';
 import { CategoriesModule } from './categories/categories.module';
 import { CartModule } from './cart/cart.module';
+import { StatsModule } from './stats/stats.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CartModule } from './cart/cart.module';
       autoLoadEntities: true,
       synchronize: true, //để dev, sau này dùng migration
       // driver: require('mysql2'),
+      // dropSchema: true,
     }),
     MulterModule.register({
       dest: './uploads',
@@ -41,6 +43,7 @@ import { CartModule } from './cart/cart.module';
     CartModule,
     OrdersModule,
     PaymentsModule,
+    StatsModule,
   ],
 })
 export class AppModule {}
