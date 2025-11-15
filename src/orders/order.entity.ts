@@ -39,7 +39,7 @@ export class Order {
   status: 'PENDING' | 'PAID' | 'FULFILLED' | 'CANCELED';
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt: 'DESC';
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;

@@ -1,72 +1,103 @@
 import {
   Body,
   Controller,
-  Post,
   Get,
+  Post,
   Put,
   Delete,
+  Patch,
   Param,
-  UseInterceptors,
+  Query,
   UploadedFiles,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
+import { ProductStatus } from 'src/common/enums/product.enums';
+import { ApiConsumes, ApiTags } from '@nestjs/swagger';
+import {
+  AnyFilesInterceptor,
+  FilesInterceptor,
+} from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
 
 @ApiTags('Products')
 @Controller('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  // CREATE
+  //  CREATE with file upload
   @Post()
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'image', maxCount: 1 },
-      { name: 'video', maxCount: 1 },
-    ]),
-  )
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string' },
-        description: { type: 'string' },
-        slug: { type: 'string' },
-        price: { type: 'number' },
-        stock: { type: 'number' },
-        currency: { type: 'string', enum: ['USD', 'VND', 'EUR'] },
-        categoryId: { type: 'number' },
-        isActive: { type: 'boolean' },
-        // 2 lựa chọn: upload file hoặc gửi URL dưới key cùng tên
-        image: {
-          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      storage: diskStorage({
+        destination: join(__dirname, '..', '..', 'uploads', 'products'),
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
         },
-        video: {
-          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
-        },
-      },
-    },
-  })
+      }),
+      limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+    }),
+  )
   async create(
     @Body() dto: CreateProductDto,
-    @UploadedFiles()
-    files?: {
-      image?: Express.Multer.File[];
-      video?: Express.Multer.File[];
-    },
+    @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    const imageFile = files?.image?.[0];
-    const videoFile = files?.video?.[0];
-    return this.productsService.create(dto, imageFile, videoFile);
+    try {
+      const image = files?.find((f) => f.fieldname === 'image');
+      const video = files?.find((f) => f.fieldname === 'video');
+
+      return this.productsService.create({
+        ...dto,
+        image: image ? `/uploads/products/${image.filename}` : undefined,
+        video: video ? `/uploads/products/${video.filename}` : undefined,
+      });
+    } catch (error) {
+      console.error('Upload failed:', error);
+      throw new BadRequestException('Failed to upload product');
+    }
   }
 
-  // READ ALL
+  @Post(':id/gallery')
+  @UseInterceptors(
+    FilesInterceptor('files', 10, {
+      storage: diskStorage({
+        destination: join(
+          __dirname,
+          '..',
+          '..',
+          'uploads',
+          'products',
+          'gallery',
+        ),
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
+        },
+      }),
+      limits: { fileSize: 500 * 1024 * 1024 }, // tối đa 500MB mỗi file
+    }),
+  )
+  async uploadGallery(
+    @Param('id') id: number,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.productsService.addGallery(+id, files);
+  }
+
+  //  READ ALL
   @Get()
-  async findAll() {
+  async findAll(
+    @Query('categoryId') categoryId?: number,
+    @Query('status') status?: ProductStatus,
+  ) {
     return this.productsService.findAll();
   }
 
@@ -77,47 +108,41 @@ export class ProductsController {
   }
 
   // UPDATE
-  @Put(':id')
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: 'image', maxCount: 1 },
-      { name: 'video', maxCount: 1 },
-    ]),
-  )
+  @Patch(':id')
   @ApiConsumes('multipart/form-data')
-  @ApiBody({
-    schema: {
-      type: 'object',
-      properties: {
-        name: { type: 'string' },
-        description: { type: 'string' },
-        slug: { type: 'string' },
-        price: { type: 'number' },
-        stock: { type: 'number' },
-        currency: { type: 'string', enum: ['USD', 'VND', 'EUR'] },
-        categoryId: { type: 'number' },
-        isActive: { type: 'boolean' },
-        image: {
-          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
+  @UseInterceptors(
+    AnyFilesInterceptor({
+      storage: diskStorage({
+        destination: join(__dirname, '..', '..', 'uploads', 'products'),
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
         },
-        video: {
-          oneOf: [{ type: 'string', format: 'binary' }, { type: 'string' }],
-        },
-      },
-    },
-  })
+      }),
+      limits: { fileSize: 500 * 1024 * 1024 }, // 500MB
+    }),
+  )
   async update(
     @Param('id') id: number,
     @Body() dto: UpdateProductDto,
-    @UploadedFiles()
-    files?: {
-      image?: Express.Multer.File[];
-      video?: Express.Multer.File[];
-    },
+    @UploadedFiles() files: Express.Multer.File[] = [],
   ) {
-    const imageFile = files?.image?.[0];
-    const videoFile = files?.video?.[0];
-    return this.productsService.update(+id, dto, imageFile, videoFile);
+    const image = files?.find((f) => f.fieldname === 'image');
+    const video = files?.find((f) => f.fieldname === 'video');
+
+    return this.productsService.update(+id, {
+      ...dto,
+      image: image ? `/uploads/products/${image.filename}` : undefined,
+      video: video ? `/uploads/products/${video.filename}` : undefined,
+    });
+  }
+
+  // TOGGLE STATUS
+  @Patch(':id/toggle')
+  async toggleStatus(@Param('id') id: number) {
+    const product = await this.productsService.toggleStatus(+id);
+    return { success: true, product };
   }
 
   // DELETE

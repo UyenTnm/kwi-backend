@@ -1,51 +1,49 @@
-import { NestFactory } from '@nestjs/core';
+import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import helmet from 'helmet';
+import { join } from 'path';
+import * as express from 'express';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import * as bodyParser from 'body-parser';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Helmet: nới lỏng 1 số rule để Swagger & /uploads hoạt động trong dev
-  app.use(
-    helmet({
-      contentSecurityPolicy: false, // tránh CSP chặn Swagger ui & inline styles trong dev
-      crossOriginResourcePolicy: { policy: 'cross-origin' }, // cho phép load ảnh /uploads từ FE khác origin
-    }),
-  );
+  // Serve static uploads
+  app.use('/uploads', express.static(join(__dirname, '..', 'uploads')));
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads',
+  });
 
-  // CORS cho admin FE (và shop FE nếu có)
+  // Enable CORS
   app.enableCors({
-    origin: ['http://localhost:5173'], // thêm các origin khác nếu cần
+    origin: ['http://localhost:5173', 'http://localhost:3001'],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization'],
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
 
-  // (Tuỳ chọn) tăng limit cho payload text khi đi kèm multipart (multer handle file, cái này handle text)
-  app.use(bodyParser.json({ limit: '10mb' }));
-  app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+  // Support large JSON + FormData parsing
+  app.use(bodyParser.json({ limit: '500mb' }));
+  app.use(bodyParser.urlencoded({ extended: true, limit: '500mb' }));
 
-  // ValidationPipe: bật transform + implicit conversion để ép string -> number/boolean
+  // Global validation with implicit type transform
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      transformOptions: { enableImplicitConversion: true }, // QUAN TRỌNG
-      forbidNonWhitelisted: true,
+      transformOptions: { enableImplicitConversion: true },
     }),
   );
 
-  // Ẩn field nhạy cảm (vd: password) khi trả về
+  // Hide sensitive fields (like password)
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-  // Prefix API
+  // PI prefix
   app.setGlobalPrefix('api');
 
-  // Swagger
+  // Swagger setup
   const config = new DocumentBuilder()
     .setTitle('KwiStore API')
     .setDescription('API docs for KwiStore')
@@ -57,5 +55,6 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   await app.listen(3000);
+  console.log(`Server running on http://localhost:3000`);
 }
 bootstrap();

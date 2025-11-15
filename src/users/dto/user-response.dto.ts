@@ -1,11 +1,18 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UserResponseDto {
-  @ApiProperty({ example: 1 })
-  id: string;
+  @ApiProperty()
+  id: number;
 
-  @ApiProperty({ example: 'alice@example.com' })
+  @ApiProperty({ example: 'user1@example.com' })
   email: string;
 
-  role: 'user' | 'admin';
+  @ApiProperty({ example: 'user', enum: ['user', 'admin'] })
+  role: 'user' | 'admin' | 'staff';
+
+  @ApiProperty({ example: true })
+  isActive: boolean;
+
+  @ApiProperty({ example: 'John Doe', required: false })
+  name?: string;
 }
