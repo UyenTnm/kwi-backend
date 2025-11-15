@@ -2,56 +2,71 @@ import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  OneToMany,
+  CreateDateColumn,
   ManyToOne,
-  Index,
+  OneToMany,
+  JoinColumn,
   BeforeInsert,
   BeforeUpdate,
 } from 'typeorm';
 import { Product } from '../products/product.entity';
 import { slugify } from 'transliteration';
+import { Post } from 'src/post/post.entity';
 
 @Entity('categories')
-@Index('uq_categories_slug', ['slug'], { unique: true })
 export class Category {
   @PrimaryGeneratedColumn()
   id: number;
-  categoryId: number;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255 })
   name: string;
 
-  @Column({ length: 100, unique: true })
+  @Column({ type: 'varchar', length: 100, unique: true })
   slug: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  description: string | null;
+
+  @CreateDateColumn()
   createdAt: Date;
 
-  @Column({ nullable: true })
-  description?: string;
-
-  @OneToMany(() => Product, (product) => product.category)
-  products: Product[];
-
-  @OneToMany(() => Category, (category) => category.children, {
+  /**
+   * Quan hệ cha – con
+   * Một category có thể có nhiều category con (children)
+   * và có thể có một category cha (parent)
+   */
+  @ManyToOne(() => Category, (category) => category.children, {
     onDelete: 'SET NULL',
+    onUpdate: 'CASCADE',
     nullable: true,
   })
+  @JoinColumn({ name: 'parentId' })
   parent: Category | null;
+
+  @OneToMany(() => Post, (p) => p.category)
+  posts: Post[];
 
   @OneToMany(() => Category, (category) => category.parent)
   children: Category[];
 
+  /**
+   * Quan hệ với sản phẩm
+   * Một category có thể chứa nhiều product
+   */
+  @OneToMany(() => Product, (product) => product.category)
+  products: Product[];
+
+  // Tự động sinh slug hợp lệ nếu thiếu hoặc trùng
   @BeforeInsert()
   @BeforeUpdate()
   generateSlug() {
-    if (!this.slug && this.name) {
-      this.slug = slugify(this.name.toLowerCase());
+    if (!this.slug || this.slug.trim() === '') {
+      this.slug = slugify(this.name || `category-${Date.now()}`, {
+        lowercase: true,
+      });
+    } else {
+      // làm sạch slug người dùng nhập sai (VD: chứa ký tự đặc biệt)
+      this.slug = slugify(this.slug, { lowercase: true });
     }
   }
-
-  @ManyToOne(() => Category, (category) => category.products, {
-    onDelete: 'SET NULL',
-  })
-  category: Category;
 }

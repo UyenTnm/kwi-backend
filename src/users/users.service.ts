@@ -3,13 +3,13 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, ILike } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
+import { User } from './user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { User } from './user.entity';
 import { UserResponseDto } from './dto/user-response.dto';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class UsersService {
@@ -18,119 +18,102 @@ export class UsersService {
     private readonly usersRepository: Repository<User>,
   ) {}
 
-  private toUserResponse(user: User): UserResponseDto {
+  private toResponse(user: User): UserResponseDto {
     return {
-      id: user.id.toString(),
+      id: user.id,
       email: user.email,
-      role: user.role as 'user' | 'admin',
+      role: user.role,
+      isActive: user.isActive,
+      name: user.name ?? '',
     };
   }
 
-  // ====== BỔ SUNG CHO AUTH ======
-  async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+  async findAll(q?: string): Promise<UserResponseDto[]> {
+    const where = q
+      ? [{ email: ILike(`%${q}%`) }, { name: ILike(`%${q}%`) }]
+      : undefined;
+
+    const users = await this.usersRepository.find({ where });
+    return users.map((u) => this.toResponse(u));
   }
 
-  // Overload signatures:
-  async create(createUserDto: CreateUserDto): Promise<UserResponseDto>;
-  async create(
-    email: string,
-    password: string,
-    role?: 'user' | 'admin',
-  ): Promise<User>;
+  async findOne(id: number): Promise<UserResponseDto> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    return this.toResponse(user);
+  }
 
-  // Implementation handling both cases
-  async create(
-    arg1: CreateUserDto | string,
-    arg2?: string,
-    arg3?: 'user' | 'admin',
-  ): Promise<UserResponseDto | User> {
-    // Case A: create(dto)
-    if (typeof arg1 !== 'string') {
-      const createUserDto = arg1 as CreateUserDto;
-
-      const existingUser = await this.usersRepository.findOne({
-        where: { email: createUserDto.email },
-      });
-      if (existingUser) {
-        throw new BadRequestException('Email already exists');
-      }
-
-      const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
-      const newUser = this.usersRepository.create({
-        email: createUserDto.email,
-        password: hashedPassword,
-        role: 'user',
-      });
-      const savedUser = await this.usersRepository.save(newUser);
-      return this.toUserResponse(savedUser);
-    }
-
-    // Case B: create(email, password, role) — dùng cho AuthService.register()
-    const email = arg1 as string;
-    const password = arg2 as string;
-    const role = (arg3 ?? 'user') as 'user' | 'admin';
-
-    const existed = await this.usersRepository.findOne({ where: { email } });
+  async create(dto: CreateUserDto): Promise<UserResponseDto> {
+    const existed = await this.usersRepository.findOne({
+      where: { email: dto.email },
+    });
     if (existed) throw new BadRequestException('Email already exists');
 
-    const hashed = await bcrypt.hash(password, 10);
-    const user = this.usersRepository.create({ email, password: hashed, role });
-    return this.usersRepository.save(user); // trả về entity để AuthService đọc role
-  }
-  // ====== HẾT BỔ SUNG CHO AUTH ======
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-  async findAll(): Promise<UserResponseDto[]> {
-    const users = await this.usersRepository.find();
-    return users.map((user) => this.toUserResponse(user));
-  }
+    const user = this.usersRepository.create({
+      email: dto.email,
+      name: dto.name ?? '',
+      password: hashedPassword,
+      role: dto.role ?? 'user',
+      isActive: dto.isActive ?? true,
+    });
 
-  async findOne(id: string | number): Promise<UserResponseDto> {
-    const where = typeof id === 'string' ? { id: Number(id) } : { id };
-    const user = await this.usersRepository.findOne({ where });
-    if (!user) throw new NotFoundException(`User with id ${id} not found`);
-    return this.toUserResponse(user);
+    const saved = await this.usersRepository.save(user);
+    return this.toResponse(saved);
   }
 
-  async update(
-    id: string | number,
-    updateUserDto: UpdateUserDto,
-  ): Promise<UserResponseDto> {
-    const where = typeof id === 'string' ? { id: Number(id) } : { id };
-    const user = await this.usersRepository.findOne({ where });
-    if (!user) throw new NotFoundException(`User with id ${id} not found`);
+  async update(id: number, dto: UpdateUserDto): Promise<UserResponseDto> {
+    console.log('Incoming update user DTO:', dto);
 
-    if (updateUserDto.email) {
-      const emailExists = await this.usersRepository.findOne({
-        where: { email: updateUserDto.email },
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    if (dto.email) {
+      const existed = await this.usersRepository.findOne({
+        where: { email: dto.email },
       });
-      if (emailExists && emailExists.id !== user.id) {
+      if (existed && existed.id !== id)
         throw new BadRequestException('Email already exists');
-      }
-      user.email = updateUserDto.email;
+      user.email = dto.email;
     }
 
-    if (updateUserDto.password) {
-      if (updateUserDto.password.length < 6) {
-        throw new BadRequestException('Password must be at least 6 characters');
-      }
-      user.password = await bcrypt.hash(updateUserDto.password, 10);
+    if (dto.password && dto.password.trim() !== '') {
+      user.password = await bcrypt.hash(dto.password, 10);
     }
 
-    if (updateUserDto.role) {
-      user.role = updateUserDto.role as 'user' | 'admin';
+    if (dto.role) user.role = dto.role;
+    if (dto.name !== undefined) user.name = dto.name;
+
+    // Chuẩn hóa xử lý isActive (boolean/string đều ok)
+    if (dto.isActive !== undefined) {
+      const val = dto.isActive as any;
+      user.isActive =
+        val === true || val === 'true' || val === 1 || val === '1';
     }
 
-    const updatedUser = await this.usersRepository.save(user);
-    return this.toUserResponse(updatedUser);
+    const updated = await this.usersRepository.save(user);
+    return this.toResponse(updated);
   }
 
-  async remove(id: string | number): Promise<{ message: string }> {
-    const where = typeof id === 'string' ? { id: Number(id) } : { id };
-    const user = await this.usersRepository.findOne({ where });
-    if (!user) throw new NotFoundException(`User with id ${id} not found`);
+  async toggleStatus(id: number): Promise<UserResponseDto> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
 
-    await this.usersRepository.delete(user.id);
-    return { message: `User with id ${id} deleted successfully` };
+    user.isActive = !user.isActive;
+    const updated = await this.usersRepository.save(user);
+    return this.toResponse(updated);
+  }
+
+  async remove(id: number): Promise<{ message: string }> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.usersRepository.remove(user);
+    return { message: 'User deleted successfully' };
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    return this.usersRepository.findOne({ where: { email } });
   }
 }

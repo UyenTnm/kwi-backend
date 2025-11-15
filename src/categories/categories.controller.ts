@@ -25,9 +25,14 @@ export class CategoriesController {
     return this.service.findAll();
   }
 
-  // Lấy danh mục theo slug (ví dụ: /categories/kit)
+  // Lấy danh mục theo slug hoặc id
   @Get('slug/:slug')
   async getBySlug(@Param('slug') slug: string) {
+    // ⚡ Cho phép truyền số ID hoặc slug
+    if (!isNaN(Number(slug))) {
+      const id = Number(slug);
+      return this.service.findById(id);
+    }
     return this.service.findBySlug(slug);
   }
 

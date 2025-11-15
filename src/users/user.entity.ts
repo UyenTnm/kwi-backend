@@ -1,22 +1,23 @@
 import { CartItem } from 'src/cart/cart-item.entity';
+import { Order } from 'src/orders/order.entity';
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
   BeforeInsert,
-  OneToMany,
   BeforeUpdate,
+  OneToMany,
 } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { Order } from 'src/orders/order.entity';
+import { Post } from 'src/post/post.entity';
 
 @Entity('users')
 export class User {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ nullable: false })
-  name: string;
+  @Column({ nullable: true })
+  name?: string;
 
   @Column({ unique: true, nullable: false })
   email: string;
@@ -24,8 +25,14 @@ export class User {
   @Column({ nullable: false })
   password: string;
 
-  @Column({ type: 'varchar', default: 'user' })
-  role: 'user' | 'admin';
+  @Column({ type: 'enum', default: 'user', enum: ['user', 'admin', 'staff'] })
+  role: 'user' | 'admin' | 'staff';
+
+  @OneToMany(() => Post, (p) => p.author)
+  posts: Post[];
+
+  @Column({ default: true })
+  isActive: boolean;
 
   @OneToMany(() => CartItem, (cartItem) => cartItem.user)
   cartItems: CartItem[];
